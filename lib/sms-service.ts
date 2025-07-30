@@ -1,80 +1,83 @@
 import twilio from "twilio"
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID
-const authToken = process.env.TWILIO_AUTH_TOKEN
-const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER
-
-if (!accountSid || !authToken || !twilioPhoneNumber) {
-  throw new Error("Twilio credentials are not configured")
-}
-
-const client = twilio(accountSid, authToken)
-
-export interface SMSMessage {
+export interface SMSOptions {
   to: string
   message: string
   type?: "booking" | "reminder" | "confirmation" | "general"
 }
 
+export interface SMSResult {
+  success: boolean
+  messageId?: string
+  to?: string
+  error?: string
+  message?: string
+}
+
 export class SMSService {
-  static async sendSMS({ to, message, type = "general" }: SMSMessage) {
-    try {
-      // Normalize phone number - add +48 if it's a Polish number without country code
-      const normalizedPhone = this.normalizePhoneNumber(to)
+  private static client: twilio.Twilio | null = null
 
-      const result = await client.messages.create({
-        body: message,
-        from: twilioPhoneNumber,
-        to: normalizedPhone,
-      })
+  private static getClient() {
+    if (!this.client) {
+      const accountSid = process.env.TWILIO_ACCOUNT_SID
+      const authToken = process.env.TWILIO_AUTH_TOKEN
 
-      console.log(`SMS sent successfully: ${result.sid}`)
-      return {
-        success: true,
-        messageId: result.sid,
-        to: normalizedPhone,
-        type,
+      if (!accountSid || !authToken) {
+        throw new Error("Twilio credentials not configured")
       }
-    } catch (error) {
-      console.error("SMS sending failed:", error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-        to,
-        type,
-      }
+
+      this.client = twilio(accountSid, authToken)
     }
+    return this.client
   }
 
-  static normalizePhoneNumber(phone: string): string {
-    // Remove all non-digit characters
-    const digits = phone.replace(/\D/g, "")
+  static async sendSMS(options: SMSOptions): Promise<SMSResult> {
+    try {
+      const client = this.getClient()
+      const fromNumber = process.env.TWILIO_PHONE_NUMBER
 
-    // If it starts with 48, add +
-    if (digits.startsWith("48") && digits.length === 11) {
-      return `+${digits}`
+      if (!fromNumber) {
+        return {
+          success: false,
+          error: "Twilio phone number not configured",
+        }
+      }
+
+      // Ensure Polish number format
+      let toNumber = options.to
+      if (toNumber.startsWith("48") && !toNumber.startsWith("+48")) {
+        toNumber = "+" + toNumber
+      } else if (!toNumber.startsWith("+")) {
+        toNumber = "+48" + toNumber.replace(/^0/, "")
+      }
+
+      const message = await client.messages.create({
+        body: options.message,
+        from: fromNumber,
+        to: toNumber,
+      })
+
+      return {
+        success: true,
+        messageId: message.sid,
+        to: toNumber,
+        message: "SMS sent successfully",
+      }
+    } catch (error: any) {
+      console.error("SMS sending error:", error)
+      return {
+        success: false,
+        error: error.message || "Failed to send SMS",
+      }
     }
-
-    // If it's a 9-digit Polish number, add +48
-    if (digits.length === 9) {
-      return `+48${digits}`
-    }
-
-    // If it already has +, return as is
-    if (phone.startsWith("+")) {
-      return phone
-    }
-
-    // Default: add + to the beginning
-    return `+${digits}`
   }
 
   static createBookingConfirmation(clientName: string, date: string, time: string): string {
-    return `Dzień dobry ${clientName}! Potwierdzamy rezerwację wizyty w EduHustawka na ${date} o ${time}. W razie pytań prosimy o kontakt. Dziękujemy!`
+    return `Dzień dobry ${clientName}! Potwierdzamy rezerwację wizyty w EduHustawka na ${date} o ${time}. W razie pytań: 123-456-789. Dziękujemy!`
   }
 
   static createBookingReminder(clientName: string, date: string, time: string): string {
-    return `Przypominamy ${clientName} o wizycie jutro (${date}) o ${time} w EduHustawka. Adres: ul. Przykładowa 1. Do zobaczenia!`
+    return `Przypominamy ${clientName} o wizycie jutro ${date} o ${time} w EduHustawka. Adres: ul. Przykładowa 1. Do zobaczenia!`
   }
 
   static createContactConfirmation(clientName: string): string {

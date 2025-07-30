@@ -8,5 +8,12 @@
     "app/api/**/*.ts": {
       "maxDuration": 30
     }
+  },
+  "env": {
+    "TWILIO_ACCOUNT_SID": "@twilio_account_sid",
+    "TWILIO_AUTH_TOKEN": "@twilio_auth_token",
+    "TWILIO_PHONE_NUMBER": "@twilio_phone_number",
+    "NEXT_PUBLIC_BASE_URL": "@next_public_base_url",
+    "NEXT_PUBLIC_GA_MEASUREMENT_ID": "@next_public_ga_measurement_id"
   }
 }

@@ -3,23 +3,24 @@
 import { SMSService } from "@/lib/sms-service"
 
 export interface BookingData {
-  clientName: string
-  phone: string
+  name: string
   email: string
+  phone: string
   date: string
   time: string
   service: string
-  notes?: string
+  message?: string
 }
 
-export async function createBooking(data: BookingData) {
+export async function submitBooking(data: BookingData) {
   try {
     // Here you would typically save to database
-    // For now, we'll just send SMS confirmation
+    console.log("Booking submitted:", data)
 
+    // Send SMS confirmation
     const smsResult = await SMSService.sendSMS({
       to: data.phone,
-      message: SMSService.createBookingConfirmation(data.clientName, data.date, data.time),
+      message: SMSService.createBookingConfirmation(data.name, data.date, data.time),
       type: "booking",
     })
 
@@ -27,22 +28,20 @@ export async function createBooking(data: BookingData) {
       return {
         success: true,
         message: "Rezerwacja została potwierdzona. SMS wysłany.",
-        bookingId: `BOOK-${Date.now()}`,
         smsId: smsResult.messageId,
       }
     } else {
       return {
-        success: false,
-        message: "Rezerwacja zapisana, ale SMS nie został wysłany.",
-        error: smsResult.error,
+        success: true,
+        message: "Rezerwacja została potwierdzona, ale SMS nie został wysłany.",
+        warning: smsResult.error,
       }
     }
   } catch (error) {
-    console.error("Booking creation error:", error)
+    console.error("Booking error:", error)
     return {
       success: false,
-      message: "Wystąpił błąd podczas tworzenia rezerwacji.",
-      error: error instanceof Error ? error.message : "Unknown error",
+      message: "Wystąpił błąd podczas rezerwacji. Spróbuj ponownie.",
     }
   }
 }
@@ -51,21 +50,20 @@ export async function sendBookingReminder(data: BookingData) {
   try {
     const smsResult = await SMSService.sendSMS({
       to: data.phone,
-      message: SMSService.createBookingReminder(data.clientName, data.date, data.time),
+      message: SMSService.createBookingReminder(data.name, data.date, data.time),
       type: "reminder",
     })
 
     return {
       success: smsResult.success,
-      message: smsResult.success ? "Przypomnienie wysłane pomyślnie" : "Błąd wysyłania przypomnienia",
+      message: smsResult.success ? "Przypomnienie wysłane" : "Błąd wysyłania przypomnienia",
       error: smsResult.error,
     }
   } catch (error) {
-    console.error("Reminder sending error:", error)
+    console.error("Reminder error:", error)
     return {
       success: false,
-      message: "Wystąpił błąd podczas wysyłania przypomnienia.",
-      error: error instanceof Error ? error.message : "Unknown error",
+      message: "Błąd wysyłania przypomnienia",
     }
   }
 }

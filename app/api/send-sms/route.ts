@@ -54,3 +54,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
+
+export async function GET() {
+  return NextResponse.json({
+    message: "SMS API działa poprawnie",
+    endpoints: {
+      POST: "/api/send-sms - wysyła SMS",
+      body: {
+        to: "numer telefonu (+48...)",
+        message: "treść wiadomości",
+        type: "booking|reminder|confirmation|general",
+      },
+    },
+  })
+}
