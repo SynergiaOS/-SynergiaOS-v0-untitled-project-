@@ -1,6 +1,14 @@
 import twilio from "twilio"
 
-const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
+const accountSid = process.env.TWILIO_ACCOUNT_SID
+const authToken = process.env.TWILIO_AUTH_TOKEN
+const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER
+
+if (!accountSid || !authToken || !twilioPhoneNumber) {
+  throw new Error("Twilio credentials are not configured")
+}
+
+const client = twilio(accountSid, authToken)
 
 export interface SMSMessage {
   to: string
@@ -9,92 +17,67 @@ export interface SMSMessage {
 }
 
 export class SMSService {
-  private static formatPhoneNumber(phone: string): string {
-    // Usuń wszystkie znaki oprócz cyfr i znaku +
-    let cleaned = phone.replace(/[^\d+]/g, "")
-
-    // Jeśli numer zaczyna się od 48, dodaj +
-    if (cleaned.startsWith("48") && !cleaned.startsWith("+48")) {
-      cleaned = "+" + cleaned
-    }
-
-    // Jeśli numer nie ma kodu kraju, dodaj +48
-    if (!cleaned.startsWith("+")) {
-      cleaned = "+48" + cleaned
-    }
-
-    return cleaned
-  }
-
   static async sendSMS({ to, message, type = "general" }: SMSMessage) {
     try {
-      const formattedPhone = this.formatPhoneNumber(to)
-
-      console.log(`Wysyłanie SMS do: ${formattedPhone}`)
-      console.log(`Wiadomość: ${message}`)
+      // Normalize phone number - add +48 if it's a Polish number without country code
+      const normalizedPhone = this.normalizePhoneNumber(to)
 
       const result = await client.messages.create({
         body: message,
-        from: process.env.TWILIO_PHONE_NUMBER!,
-        to: formattedPhone,
+        from: twilioPhoneNumber,
+        to: normalizedPhone,
       })
 
-      console.log(`SMS wysłany pomyślnie. SID: ${result.sid}`)
-
+      console.log(`SMS sent successfully: ${result.sid}`)
       return {
         success: true,
-        sid: result.sid,
-        to: formattedPhone,
-        message: "SMS wysłany pomyślnie",
+        messageId: result.sid,
+        to: normalizedPhone,
+        type,
       }
-    } catch (error: any) {
-      console.error("Błąd wysyłania SMS:", error)
-
+    } catch (error) {
+      console.error("SMS sending failed:", error)
       return {
         success: false,
-        error: error.message,
-        message: "Błąd wysyłania SMS",
+        error: error instanceof Error ? error.message : "Unknown error",
+        to,
+        type,
       }
     }
   }
 
-  static async sendBookingConfirmation(
-    to: string,
-    bookingDetails: {
-      date: string
-      time: string
-      service: string
-      confirmationId: string
-    },
-  ) {
-    const message = `Potwierdzenie rezerwacji w EduHustawka:
-📅 Data: ${bookingDetails.date}
-🕐 Godzina: ${bookingDetails.time}
-🎯 Usługa: ${bookingDetails.service}
-📋 Nr rezerwacji: ${bookingDetails.confirmationId}
+  static normalizePhoneNumber(phone: string): string {
+    // Remove all non-digit characters
+    const digits = phone.replace(/\D/g, "")
 
-Dziękujemy za zaufanie!
-Tel: ${process.env.TWILIO_PHONE_NUMBER}`
+    // If it starts with 48, add +
+    if (digits.startsWith("48") && digits.length === 11) {
+      return `+${digits}`
+    }
 
-    return this.sendSMS({ to, message, type: "booking" })
+    // If it's a 9-digit Polish number, add +48
+    if (digits.length === 9) {
+      return `+48${digits}`
+    }
+
+    // If it already has +, return as is
+    if (phone.startsWith("+")) {
+      return phone
+    }
+
+    // Default: add + to the beginning
+    return `+${digits}`
   }
 
-  static async sendReminder(
-    to: string,
-    reminderDetails: {
-      date: string
-      time: string
-      service: string
-    },
-  ) {
-    const message = `Przypomnienie o wizycie w EduHustawka:
-📅 Jutro: ${reminderDetails.date}
-🕐 Godzina: ${reminderDetails.time}
-🎯 Usługa: ${reminderDetails.service}
+  static createBookingConfirmation(clientName: string, date: string, time: string): string {
+    return `Dzień dobry ${clientName}! Potwierdzamy rezerwację wizyty w EduHustawka na ${date} o ${time}. W razie pytań prosimy o kontakt. Dziękujemy!`
+  }
 
-Czekamy na Ciebie!
-Adres: ul. Przykładowa 1, Warszawa`
+  static createBookingReminder(clientName: string, date: string, time: string): string {
+    return `Przypominamy ${clientName} o wizycie jutro (${date}) o ${time} w EduHustawka. Adres: ul. Przykładowa 1. Do zobaczenia!`
+  }
 
-    return this.sendSMS({ to, message, type: "reminder" })
+  static createContactConfirmation(clientName: string): string {
+    return `Dzień dobry ${clientName}! Otrzymaliśmy Twoją wiadomość przez formularz kontaktowy. Odpowiemy w ciągu 24h. EduHustawka`
   }
 }

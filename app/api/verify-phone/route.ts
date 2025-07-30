@@ -1,43 +1,36 @@
 import { type NextRequest, NextResponse } from "next/server"
 import twilio from "twilio"
 
-const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
+const accountSid = process.env.TWILIO_ACCOUNT_SID
+const authToken = process.env.TWILIO_AUTH_TOKEN
 
 export async function POST(request: NextRequest) {
   try {
+    if (!accountSid || !authToken) {
+      return NextResponse.json({ error: "Twilio credentials not configured" }, { status: 500 })
+    }
+
     const { phoneNumber } = await request.json()
 
     if (!phoneNumber) {
-      return NextResponse.json({ error: "Brak numeru telefonu" }, { status: 400 })
+      return NextResponse.json({ error: "Phone number is required" }, { status: 400 })
     }
 
-    // Formatuj numer telefonu
-    let formattedPhone = phoneNumber.replace(/[^\d+]/g, "")
-    if (!formattedPhone.startsWith("+")) {
-      formattedPhone = "+48" + formattedPhone
-    }
+    const client = twilio(accountSid, authToken)
 
-    // Wyślij kod weryfikacyjny przez Twilio Verify
-    const verification = await client.verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID!).verifications.create({
-      to: formattedPhone,
-      channel: "sms",
+    // Add phone number to verified caller IDs
+    const validationRequest = await client.validationRequests.create({
+      phoneNumber: phoneNumber,
+      method: "sms", // or 'call'
     })
 
     return NextResponse.json({
       success: true,
-      message: "Kod weryfikacyjny wysłany",
-      sid: verification.sid,
-      to: formattedPhone,
+      validationCode: validationRequest.validationCode,
+      message: "Verification SMS sent. Please check your phone.",
     })
-  } catch (error: any) {
-    console.error("Błąd weryfikacji numeru:", error)
-
-    return NextResponse.json(
-      {
-        error: "Błąd wysyłania kodu weryfikacyjnego",
-        details: error.message,
-      },
-      { status: 500 },
-    )
+  } catch (error) {
+    console.error("Phone verification error:", error)
+    return NextResponse.json({ error: "Failed to verify phone number" }, { status: 500 })
   }
 }

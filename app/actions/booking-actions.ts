@@ -2,67 +2,70 @@
 
 import { SMSService } from "@/lib/sms-service"
 
-export async function createBooking(formData: FormData) {
-  const name = formData.get("name") as string
-  const phone = formData.get("phone") as string
-  const email = formData.get("email") as string
-  const date = formData.get("date") as string
-  const time = formData.get("time") as string
-  const service = formData.get("service") as string
-  const notes = formData.get("notes") as string
+export interface BookingData {
+  clientName: string
+  phone: string
+  email: string
+  date: string
+  time: string
+  service: string
+  notes?: string
+}
 
+export async function createBooking(data: BookingData) {
   try {
-    // Generuj ID rezerwacji
-    const confirmationId = `EDU${Date.now().toString().slice(-6)}`
+    // Here you would typically save to database
+    // For now, we'll just send SMS confirmation
 
-    // Wyślij SMS potwierdzający
-    const smsResult = await SMSService.sendBookingConfirmation(phone, {
-      date,
-      time,
-      service,
-      confirmationId,
+    const smsResult = await SMSService.sendSMS({
+      to: data.phone,
+      message: SMSService.createBookingConfirmation(data.clientName, data.date, data.time),
+      type: "booking",
     })
 
-    if (!smsResult.success) {
-      console.error("Błąd wysyłania SMS:", smsResult.error)
+    if (smsResult.success) {
+      return {
+        success: true,
+        message: "Rezerwacja została potwierdzona. SMS wysłany.",
+        bookingId: `BOOK-${Date.now()}`,
+        smsId: smsResult.messageId,
+      }
+    } else {
+      return {
+        success: false,
+        message: "Rezerwacja zapisana, ale SMS nie został wysłany.",
+        error: smsResult.error,
+      }
     }
-
-    // Tutaj możesz dodać zapis do bazy danych
-    console.log("Nowa rezerwacja:", {
-      name,
-      phone,
-      email,
-      date,
-      time,
-      service,
-      notes,
-      confirmationId,
-      smsStatus: smsResult.success ? "sent" : "failed",
-    })
-
-    return {
-      success: true,
-      message: "Rezerwacja została utworzona pomyślnie!",
-      confirmationId,
-      smsStatus: smsResult.success,
-    }
-  } catch (error: any) {
-    console.error("Błąd tworzenia rezerwacji:", error)
+  } catch (error) {
+    console.error("Booking creation error:", error)
     return {
       success: false,
-      message: "Wystąpił błąd podczas tworzenia rezerwacji",
+      message: "Wystąpił błąd podczas tworzenia rezerwacji.",
+      error: error instanceof Error ? error.message : "Unknown error",
     }
   }
 }
 
-export async function sendTestSMS(phone: string, message: string) {
+export async function sendBookingReminder(data: BookingData) {
   try {
-    const result = await SMSService.sendSMS({ to: phone, message, type: "general" })
-    return result
-  } catch (error: any) {
+    const smsResult = await SMSService.sendSMS({
+      to: data.phone,
+      message: SMSService.createBookingReminder(data.clientName, data.date, data.time),
+      type: "reminder",
+    })
+
+    return {
+      success: smsResult.success,
+      message: smsResult.success ? "Przypomnienie wysłane pomyślnie" : "Błąd wysyłania przypomnienia",
+      error: smsResult.error,
+    }
+  } catch (error) {
+    console.error("Reminder sending error:", error)
     return {
       success: false,
-      error: error.message,
+      message: "Wystąpił błąd podczas wysyłania przypomnienia.",
+      error: error instanceof Error ? error.message : "Unknown error",
     }
   }
 }
