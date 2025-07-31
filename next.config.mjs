@@ -8,6 +8,13 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
+    formats: ['image/avif', 'image/webp'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    minimumCacheTTL: 60,
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     remotePatterns: [
       {
         protocol: 'https',
@@ -19,18 +26,19 @@ const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'hebbkx1anhila5yf.public.blob.vercel-storage.com',
+        hostname: 'placeholder.pics',
       },
       {
         protocol: 'https',
-        hostname: 'blob.v0.dev',
+        hostname: 'via.placeholder.com',
       },
     ],
+    unoptimized: true,
   },
   async headers() {
     return [
       {
-        source: '/:path*',
+        source: '/(.*)',
         headers: [
           {
             key: 'X-Content-Type-Options',
@@ -48,6 +56,10 @@ const nextConfig = {
       },
     ]
   },
-};
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
+  },
+}
 
-export default nextConfig;
+export default nextConfig
+</merged_code>

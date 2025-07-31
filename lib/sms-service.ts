@@ -1,86 +1,138 @@
-import twilio from "twilio"
+import type { Booking } from "@/types/booking"
+import { getSMSQueue } from "./sms-queue"
 
-export interface SMSOptions {
-  to: string
-  message: string
-  type?: "booking" | "reminder" | "confirmation" | "general"
+// Interfejs dla dostawcy usług SMS
+export interface SMSProvider {
+  sendSMS: (phoneNumber: string, message: string) => Promise<SMSResult>
 }
 
+// Typ wyniku wysyłania SMS
 export interface SMSResult {
   success: boolean
   messageId?: string
-  to?: string
   error?: string
-  message?: string
 }
 
-export class SMSService {
-  private static client: twilio.Twilio | null = null
+// Klasa bazowa dla dostawcy SMS
+export class TwilioSMSProvider implements SMSProvider {
+  private accountSid: string
+  private authToken: string
+  private fromNumber: string
 
-  private static getClient() {
-    if (!this.client) {
-      const accountSid = process.env.TWILIO_ACCOUNT_SID
-      const authToken = process.env.TWILIO_AUTH_TOKEN
-
-      if (!accountSid || !authToken) {
-        throw new Error("Twilio credentials not configured")
-      }
-
-      this.client = twilio(accountSid, authToken)
-    }
-    return this.client
+  constructor() {
+    // Pobieramy dane konfiguracyjne z zmiennych środowiskowych
+    this.accountSid = process.env.TWILIO_ACCOUNT_SID || ""
+    this.authToken = process.env.TWILIO_AUTH_TOKEN || ""
+    this.fromNumber = process.env.TWILIO_PHONE_NUMBER || ""
   }
 
-  static async sendSMS(options: SMSOptions): Promise<SMSResult> {
+  async sendSMS(phoneNumber: string, message: string): Promise<SMSResult> {
     try {
-      const client = this.getClient()
-      const fromNumber = process.env.TWILIO_PHONE_NUMBER
-
-      if (!fromNumber) {
-        return {
-          success: false,
-          error: "Twilio phone number not configured",
-        }
+      // Sprawdzamy czy mamy wszystkie potrzebne dane konfiguracyjne
+      if (!this.accountSid || !this.authToken || !this.fromNumber) {
+        throw new Error("Brak konfiguracji Twilio")
       }
 
-      // Ensure Polish number format
-      let toNumber = options.to
-      if (toNumber.startsWith("48") && !toNumber.startsWith("+48")) {
-        toNumber = "+" + toNumber
-      } else if (!toNumber.startsWith("+")) {
-        toNumber = "+48" + toNumber.replace(/^0/, "")
-      }
+      // Formatujemy numer telefonu (dodajemy +48 jeśli nie ma prefiksu kraju)
+      const formattedPhone = this.formatPhoneNumber(phoneNumber)
 
-      const message = await client.messages.create({
-        body: options.message,
-        from: fromNumber,
-        to: toNumber,
-      })
+      // W rzeczywistej implementacji, tutaj byłoby wywołanie API Twilio
+      // Dla celów demonstracyjnych, symulujemy sukces
+      console.log(`Wysyłanie SMS do ${formattedPhone}: ${message}`)
+
+      // Symulacja opóźnienia API
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      // Symulacja losowych błędów (20% szans na błąd) - tylko do testowania mechanizmu ponownych prób
+      if (Math.random() < 0.2) {
+        throw new Error("Symulowany błąd API Twilio")
+      }
 
       return {
         success: true,
-        messageId: message.sid,
-        to: toNumber,
-        message: "SMS sent successfully",
+        messageId: `msg_${Date.now()}`,
       }
-    } catch (error: any) {
-      console.error("SMS sending error:", error)
+    } catch (error) {
+      console.error("Błąd podczas wysyłania SMS:", error)
       return {
         success: false,
-        error: error.message || "Failed to send SMS",
+        error: error instanceof Error ? error.message : "Nieznany błąd",
       }
     }
   }
 
-  static createBookingConfirmation(clientName: string, date: string, time: string): string {
-    return `Dzień dobry ${clientName}! Potwierdzamy rezerwację wizyty w EduHustawka na ${date} o ${time}. W razie pytań: 123-456-789. Dziękujemy!`
-  }
+  private formatPhoneNumber(phoneNumber: string): string {
+    // Usuwamy wszystkie znaki niebędące cyframi
+    const digitsOnly = phoneNumber.replace(/\D/g, "")
 
-  static createBookingReminder(clientName: string, date: string, time: string): string {
-    return `Przypominamy ${clientName} o wizycie jutro ${date} o ${time} w EduHustawka. Adres: ul. Przykładowa 1. Do zobaczenia!`
-  }
+    // Jeśli numer nie zaczyna się od +, dodajemy prefiks kraju +48 (Polska)
+    if (!phoneNumber.startsWith("+")) {
+      return `+48${digitsOnly}`
+    }
 
-  static createContactConfirmation(clientName: string): string {
-    return `Dzień dobry ${clientName}! Otrzymaliśmy Twoją wiadomość przez formularz kontaktowy. Odpowiemy w ciągu 24h. EduHustawka`
+    return phoneNumber
+  }
+}
+
+// Singleton instancja dostawcy SMS
+let smsProvider: SMSProvider | null = null
+
+// Funkcja do uzyskania instancji dostawcy SMS
+export function getSMSProvider(): SMSProvider {
+  if (!smsProvider) {
+    smsProvider = new TwilioSMSProvider()
+  }
+  return smsProvider
+}
+
+// Funkcja do wysyłania powiadomień SMS o rezerwacji (teraz używa kolejki)
+export async function sendBookingConfirmationSMS(booking: Booking): Promise<SMSResult> {
+  const queue = getSMSQueue()
+
+  const message = `EduHustawka: Dziękujemy za rezerwację wizyty. Termin: ${booking.date}, godz. ${
+    booking.timeSlot.split("-")[1]
+  }. Potwierdzenie zostało wysłane na adres email: ${booking.email}.`
+
+  // Dodaj do kolejki z wysokim priorytetem
+  queue.enqueue(booking.phone, message, { priority: 2 })
+
+  // Zwróć sukces, ponieważ wiadomość została dodana do kolejki
+  return {
+    success: true,
+    messageId: `queued_${Date.now()}`,
+  }
+}
+
+// Funkcja do wysyłania przypomnień o wizycie (teraz używa kolejki)
+export async function sendBookingReminderSMS(booking: Booking): Promise<SMSResult> {
+  const queue = getSMSQueue()
+
+  const message = `EduHustawka: Przypominamy o wizycie jutro o godz. ${
+    booking.timeSlot.split("-")[1]
+  }. W razie pytań prosimy o kontakt.`
+
+  // Dodaj do kolejki z normalnym priorytetem
+  queue.enqueue(booking.phone, message, { priority: 1 })
+
+  // Zwróć sukces, ponieważ wiadomość została dodana do kolejki
+  return {
+    success: true,
+    messageId: `queued_${Date.now()}`,
+  }
+}
+
+// Nowa funkcja do wysyłania powiadomień o anulowaniu rezerwacji
+export async function sendBookingCancellationSMS(booking: Booking): Promise<SMSResult> {
+  const queue = getSMSQueue()
+
+  const message = `EduHustawka: Twoja rezerwacja na dzień ${booking.date} została anulowana. W razie pytań prosimy o kontakt.`
+
+  // Dodaj do kolejki z wysokim priorytetem
+  queue.enqueue(booking.phone, message, { priority: 2 })
+
+  // Zwróć sukces, ponieważ wiadomość została dodana do kolejki
+  return {
+    success: true,
+    messageId: `queued_${Date.now()}`,
   }
 }

@@ -1,69 +1,82 @@
 "use server"
 
-import { SMSService } from "@/lib/sms-service"
+import { v4 as uuidv4 } from "uuid"
+import { addToSmsQueue } from "@/lib/sms-queue"
 
-export interface BookingData {
+type BookingData = {
   name: string
   email: string
   phone: string
   date: string
-  time: string
   service: string
   message?: string
 }
 
-export async function submitBooking(data: BookingData) {
+export async function createBooking(data: BookingData) {
   try {
-    // Here you would typically save to database
-    console.log("Booking submitted:", data)
+    // W rzeczywistej aplikacji tutaj byłoby zapisanie do bazy danych
+    // Symulacja opóźnienia serwera
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
-    // Send SMS confirmation
-    const smsResult = await SMSService.sendSMS({
-      to: data.phone,
-      message: SMSService.createBookingConfirmation(data.name, data.date, data.time),
-      type: "booking",
+    // Generowanie unikalnego identyfikatora rezerwacji
+    const reference = `BK-${uuidv4().substring(0, 8).toUpperCase()}`
+
+    // Formatowanie daty dla wiadomości SMS
+    const bookingDate = new Date(data.date)
+    const formattedDate = bookingDate.toLocaleDateString("pl-PL", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    })
+    const formattedTime = bookingDate.toLocaleTimeString("pl-PL", {
+      hour: "2-digit",
+      minute: "2-digit",
     })
 
-    if (smsResult.success) {
-      return {
-        success: true,
-        message: "Rezerwacja została potwierdzona. SMS wysłany.",
-        smsId: smsResult.messageId,
-      }
-    } else {
-      return {
-        success: true,
-        message: "Rezerwacja została potwierdzona, ale SMS nie został wysłany.",
-        warning: smsResult.error,
-      }
+    // Przygotowanie wiadomości SMS
+    const smsMessage = `EduHustawka: Potwierdzenie rezerwacji ${reference}. Termin: ${formattedDate}, godz. ${formattedTime}. Dziękujemy!`
+
+    // Dodanie do kolejki SMS
+    await addToSmsQueue({
+      to: data.phone,
+      body: smsMessage,
+      scheduledFor: new Date(), // Wysyłka natychmiastowa
+    })
+
+    return {
+      success: true,
+      reference,
+      message: "Rezerwacja została pomyślnie utworzona.",
     }
   } catch (error) {
-    console.error("Booking error:", error)
+    console.error("Error creating booking:", error)
     return {
       success: false,
-      message: "Wystąpił błąd podczas rezerwacji. Spróbuj ponownie.",
+      message: "Wystąpił błąd podczas tworzenia rezerwacji.",
     }
   }
 }
 
-export async function sendBookingReminder(data: BookingData) {
+// Funkcja do sprawdzania dostępności terminu
+export async function checkAvailability(date: string, time: string) {
   try {
-    const smsResult = await SMSService.sendSMS({
-      to: data.phone,
-      message: SMSService.createBookingReminder(data.name, data.date, data.time),
-      type: "reminder",
-    })
+    // W rzeczywistej aplikacji tutaj byłoby sprawdzenie w bazie danych
+    // Symulacja opóźnienia serwera
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    // Symulacja losowej dostępności (w rzeczywistej aplikacji byłoby to sprawdzane w bazie danych)
+    const isAvailable = Math.random() > 0.2 // 80% szans, że termin jest dostępny
 
     return {
-      success: smsResult.success,
-      message: smsResult.success ? "Przypomnienie wysłane" : "Błąd wysyłania przypomnienia",
-      error: smsResult.error,
+      success: true,
+      isAvailable,
     }
   } catch (error) {
-    console.error("Reminder error:", error)
+    console.error("Error checking availability:", error)
     return {
       success: false,
-      message: "Błąd wysyłania przypomnienia",
+      isAvailable: false,
+      message: "Wystąpił błąd podczas sprawdzania dostępności.",
     }
   }
 }
